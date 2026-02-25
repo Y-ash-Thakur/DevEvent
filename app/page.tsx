@@ -4,6 +4,7 @@ import EventCard from "@/components/EventCard";
 const events = [
     { image: '/images/event1.png', title: 'Event 1' },
     { image: '/images/event2.png', title: 'Event 2' },
+    { image: '/images/event3.png', title: 'Event 3' }
 ]
 
 const Page = () => {
