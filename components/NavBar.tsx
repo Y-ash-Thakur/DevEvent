@@ -15,6 +15,7 @@ const NavBar = () => {
                     <Link href="/">Home</Link>
                     <Link href="/">Events</Link>
                     <Link href="/">Create Events</Link>
+                    <Link href="/">About</Link>
                 </ul>
             </nav>
         </header>
