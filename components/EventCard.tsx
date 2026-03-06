@@ -4,6 +4,10 @@ import Image from "next/image";
 interface Props {
     title: string,
     image: string,
+    slug: string,
+    location: string,
+    date: string,
+    time: string,
 }
 
 const EventCard = ({title, image} : Props) => {
