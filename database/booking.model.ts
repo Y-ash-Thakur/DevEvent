@@ -1,7 +1,7 @@
-import mongoose, { Document, Model, Schema, Types } from "mongoose";
+import { Schema, model, models, Document, Types } from 'mongoose';
+import Event from './event.model';
 
-import Event from "./event.model";
-
+// TypeScript interface for Booking document
 export interface IBooking extends Document {
   eventId: Types.ObjectId;
   email: string;
@@ -9,75 +9,68 @@ export interface IBooking extends Document {
   updatedAt: Date;
 }
 
-// ---------------------------------------------------------------------------
-// Schema
-// ---------------------------------------------------------------------------
-
-/**
- * Simple but robust email regex — sufficient for most real-world addresses.
- * Heavy RFC 5322 parsers are overkill here; the pre-save hook catches invalid values.
- */
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const BookingSchema = new Schema<IBooking>(
   {
-    // ObjectId ref keeps the collection loosely coupled to Event without
-    // MongoDB-level foreign-key constraints (which MongoDB doesn't support).
     eventId: {
       type: Schema.Types.ObjectId,
-      ref: "Event",
-      required: [true, "Event ID is required"],
-      index: true, // speeds up queries that filter bookings by event
+      ref: 'Event',
+      required: [true, 'Event ID is required'],
     },
     email: {
       type: String,
-      required: [true, "Email is required"],
+      required: [true, 'Email is required'],
       trim: true,
-      lowercase: true, // normalise storage; avoids duplicate-email edge cases
+      lowercase: true,
       validate: {
-        validator: (v: string) => EMAIL_REGEX.test(v),
-        message: "Invalid email address.",
+        validator: function (email: string) {
+          // RFC 5322 compliant email validation regex
+          const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+          return emailRegex.test(email);
+        },
+        message: 'Please provide a valid email address',
       },
     },
   },
   {
-    // Automatically manages createdAt and updatedAt fields.
-    timestamps: true,
+    timestamps: true, // Auto-generate createdAt and updatedAt
   }
 );
 
-// ---------------------------------------------------------------------------
-// Pre-save hook
-// ---------------------------------------------------------------------------
+// Pre-save hook to validate events exists before creating booking
+BookingSchema.pre('save', async function (next) {
+  const booking = this as IBooking;
 
-/**
- * Verifies the referenced event exists before persisting the booking.
- *
- * MongoDB does not enforce referential integrity, so this hook provides that
- * guarantee at the application layer. The check only runs when eventId is new
- * or modified to avoid an extra DB round-trip on unrelated updates.
- */
-BookingSchema.pre("save", async function (next) {
-  if (this.isModified("eventId")) {
-    const eventExists = await Event.exists({ _id: this.eventId });
+  // Only validate eventId if it's new or modified
+  if (booking.isModified('eventId') || booking.isNew) {
+    try {
+      const eventExists = await Event.findById(booking.eventId).select('_id');
 
-    if (!eventExists) {
-      return next(
-        new Error(`Event with ID "${this.eventId.toString()}" does not exist.`)
-      );
+      if (!eventExists) {
+        const error = new Error(`Event with ID ${booking.eventId} does not exist`);
+        error.name = 'ValidationError';
+        return next(error);
+      }
+    } catch {
+      const validationError = new Error('Invalid events ID format or database error');
+      validationError.name = 'ValidationError';
+      return next(validationError);
     }
   }
 
   next();
 });
 
-// ---------------------------------------------------------------------------
-// Model
-// ---------------------------------------------------------------------------
+// Create index on eventId for faster queries
+BookingSchema.index({ eventId: 1 });
 
-// Guard against model recompilation during Next.js hot reloads in development.
-const Booking =
-  (mongoose.models.Booking as Model<IBooking>) ??
-  mongoose.model<IBooking>("Booking", BookingSchema);
+// Create compound index for common queries (events bookings by date)
+BookingSchema.index({ eventId: 1, createdAt: -1 });
+
+// Create index on email for user booking lookups
+BookingSchema.index({ email: 1 });
+
+// Enforce one booking per events per email
+BookingSchema.index({ eventId: 1, email: 1 }, { unique: true, name: 'uniq_event_email' });
+const Booking = models.Booking || model<IBooking>('Booking', BookingSchema);
 
 export default Booking;
