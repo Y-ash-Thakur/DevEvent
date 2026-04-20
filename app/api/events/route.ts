@@ -7,14 +7,26 @@ export async function POST(req: NextRequest) {
     try {
         await connectDB();
 
-        const formData = await req.formData();
-
         let event;
 
-        try{
-            event = Object.fromEntries(formData.entries());
-        } catch (error) {
-            return NextResponse.json({ message: 'Invalid JSON data format'}, { status: 400 });
+        try {
+            event = await req.json();
+            
+            // Map the UI dropdown values to the mongoose schema enum values
+            if (event.mode) {
+                if (event.mode === 'Hybrid (In-Person & Online)') {
+                    event.mode = 'hybrid';
+                } else if (event.mode === 'Online') {
+                    event.mode = 'online';
+                } else if (event.mode === 'In-Person') {
+                    event.mode = 'offline';
+                } else {
+                    event.mode = event.mode.toLowerCase();
+                }
+            }
+
+        } catch (e) {
+            return NextResponse.json({ message: 'Invalid JSON data format' }, { status: 400 });
         }
 
         const createdEvent = await Event.create(event);
@@ -34,19 +46,19 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ message: 'Event Created Successfully', event: createdEvent }, { status: 200 });
 
-    } catch (error) {
-        console.error(error);
+    } catch (e) {
+        console.error(e);
 
         const posthog = getPostHogClient();
         posthog.capture({
             distinctId: 'anonymous',
             event: 'event_creation_failed',
             properties: {
-                error_message: error instanceof Error ? error.message : 'Unknown error',
+                error_message: e instanceof Error ? e.message : 'Unknown error',
             },
         });
         await posthog.shutdown();
 
-        return NextResponse.json({ message: 'Event Creation Failed', error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ message: 'Event Creation Failed', error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
     }
 }
